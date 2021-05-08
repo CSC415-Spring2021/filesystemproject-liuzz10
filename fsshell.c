@@ -1,8 +1,10 @@
-/**************************************************************
-* Class:  CSC-415
-* Name: Professor Bierman
-* Student ID: N/A
-* Project: Basic File System
+/***************************************************************************************
+* Class: CSC-415-02 Spring 2021
+* Names: Professor Bierman, Zhuozhuo Liu, Jinjian Tan, Yunhao Wang (Mike on iLearn), Chu Cheng Situ
+* Student ID: 921410045 (Zhuozhuo), 921383408 (Jinjian), 921458509 (Yunhao), 921409278 (Chu Cheng)
+* GitHub Names: liuzz10 (Zhuozhuo), KenOasis (Jinjian), mikeyhwang (Yunhao), chuchengsitu (Chu Cheng)
+* Group Name: return 0
+* Project: Group Project – File System
 *
 * File: fsShell.c
 *
@@ -11,7 +13,7 @@
 * Make sure to set the #defined on the CMDxxxx_ON from 0 to 1 
 * when you are ready to test that feature
 *
-**************************************************************/
+*****************************************************************************************/
 
 
 #include <stdlib.h>
@@ -23,8 +25,14 @@
 #include <getopt.h>
 #include <string.h>
 
+#include "fsLow.h"
+#include "b_io.h"
+#include "vcb.h"
+#include "freeSpace.h"
 #include "mfs.h"
+#include "dir.h"
 
+freeSpace* vector;
 /***************  START LINUX TESTING CODE FOR SHELL ***************/
 #define TEMP_LINUX 0  //MUST be ZERO for working with your file system
 #if (TEMP_LINUX == 1)
@@ -106,15 +114,15 @@
 #define DIRMAX_LEN		4096
 
 /****   SET THESE TO 1 WHEN READY TO TEST THAT COMMAND ****/
-#define CMDLS_ON	0
-#define CMDCP_ON	0
-#define CMDMV_ON	0
-#define CMDMD_ON	0
-#define CMDRM_ON	0
-#define CMDCP2L_ON	0
-#define CMDCP2FS_ON	0
-#define CMDCD_ON	0
-#define CMDPWD_ON	0
+#define CMDLS_ON	1
+#define CMDCP_ON	1
+#define CMDMV_ON	1
+#define CMDMD_ON	1
+#define CMDRM_ON	1
+#define CMDCP2L_ON	1
+#define CMDCP2FS_ON	1
+#define CMDCD_ON	1
+#define CMDPWD_ON	1
 
 
 typedef struct dispatch_t
@@ -172,7 +180,7 @@ int displayFiles (fdDir * dirp, int flall, int fllong)
 			if (fllong)
 				{
 				fs_stat (di->d_name, &statbuf);
-				printf ("%s    %9ld   %s\n", fs_isDir(di->d_name)?"D":"-", statbuf.st_size, di->d_name);
+				printf ("%s    %9ld   %s    %s\n", fs_isDir(di->d_name)?"D":"-", statbuf.st_size, display_time(statbuf.st_modtime), di->d_name);
 				}
 			else
 				{
@@ -325,10 +333,16 @@ int cmd_cp (int argcnt, char *argvec[])
 			printf("Usage: cp srcfile [destfile]\n");
 			return (-1);
 		}
-	
-	
+
 	testfs_src_fd = b_open (src, O_RDONLY);
 	testfs_dest_fd = b_open (dest, O_WRONLY | O_CREAT | O_TRUNC);
+
+	//Handling b_open returned -1 as open fail
+	if((testfs_src_fd == -1) | testfs_dest_fd == -1){
+		printf("cp2fs: fail to finish copying process due to file opening problem\n");
+		return (-1);
+	}
+	
 	do 
 		{
 		readcnt = b_read (testfs_src_fd, buf, BUFFERLEN);
@@ -346,8 +360,13 @@ int cmd_cp (int argcnt, char *argvec[])
 int cmd_mv (int argcnt, char *argvec[])
 	{
 #if (CMDMV_ON == 1)				
-	return -99;
 	// **** TODO ****  For you to implement	
+	if (argcnt != 3){
+		printf("Usage: mv src[filename] path[directory]\n");
+		return -1;
+	}
+
+	return(fs_move(argvec[1], argvec[2]));
 #endif
 	return 0;
 	}
@@ -434,6 +453,16 @@ int cmd_cp2l (int argcnt, char *argvec[])
 	
 	testfs_fd = b_open (src, O_RDONLY);
 	linux_fd = open (dest, O_WRONLY | O_CREAT | O_TRUNC);
+
+
+	//Handling b_open returned -1 as open fail
+	if(testfs_fd == -1){
+		printf("cp2fs: fail to finish copying process due to file opening problem\n");
+		return (-1);
+	}
+	
+
+	int count = 0;
 	do 
 		{
 		readcnt = b_read (testfs_fd, buf, BUFFERLEN);
@@ -478,6 +507,13 @@ int cmd_cp2fs (int argcnt, char *argvec[])
 	
 	testfs_fd = b_open (dest, O_WRONLY | O_CREAT | O_TRUNC);
 	linux_fd = open (src, O_RDONLY);
+
+	//Handling b_open returned -1 as open fail
+	if(testfs_fd == -1){
+		printf("cp2fs: fail to finish copying process due to file opening problem\n");
+		return (-1);
+	}
+
 	do 
 		{
 		readcnt = read (linux_fd, buf, BUFFERLEN);
@@ -553,8 +589,7 @@ int cmd_history (int argcnt, char *argvec[])
 	{
 	HIST_ENTRY * he;
 	int i = 0;
-	
-	
+		
 	for (i = history_base; i <= history_length; i++)
 		{
 		he = history_get(i);
@@ -693,18 +728,28 @@ int main (int argc, char * argv[])
 	char * cmdin;
 	char * cmd;
 	HIST_ENTRY *he;
+	
+	char * filename = "VolumeZero";
+	uint64_t volumeSize = 10000000;
+	uint64_t blockSize = BLOCKSIZE;
+  	int retVal;
 		
+	retVal = startPartitionSystem (filename, &volumeSize, &blockSize);	
+	printf("Opened %s, Volume Size: %llu;  BlockSize: %llu; Return %d\n", filename, (ull_t)volumeSize, (ull_t)blockSize, retVal);
+	vcb *v0 = bootVCB(blockSize*10240, blockSize);
+		/*Test*/
+	
 	using_history();
 	stifle_history(200);	//max history entries
-	
+
 	while (1)
 		{
 		cmdin = readline("Prompt > ");
 #ifdef COMMAND_DEBUG
 		printf ("%s\n", cmdin);
 #endif
-		
 		cmd = malloc (strlen(cmdin) + 30);
+		
 		strcpy (cmd, cmdin);
 		free (cmdin);
 		cmdin = NULL;
@@ -726,8 +771,14 @@ int main (int argc, char * argv[])
 				}
 			processcommand (cmd);
 			}
-				
 		free (cmd);
-		cmd = NULL;		
+		cmd = NULL;
 		} // end while
+		free(vector->bitVector);
+		vector->bitVector = NULL;
+		free(vector);
+		vector = NULL;
+		free(v0);
+		v0 = NULL;
+		closePartitionSystem();
 	}
